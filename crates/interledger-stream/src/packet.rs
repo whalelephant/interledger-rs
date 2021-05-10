@@ -1,4 +1,7 @@
-use super::crypto::{decrypt, encrypt};
+use super::{
+    crypto::{decrypt, encrypt},
+    error::InvalidPacket,
+};
 use byteorder::ReadBytesExt;
 use bytes::{BufMut, BytesMut};
 use interledger_packet::{
@@ -142,15 +145,18 @@ impl StreamPacket {
     /// 1. If the version of Stream Protocol doesn't match the hardcoded [stream version](constant.STREAM_VERSION.html)
     /// 1. If the decryption fails
     /// 1. If the decrypted bytes cannot be parsed to an unencrypted [Stream Packet](./struct.StreamPacket.html)
-    pub fn from_encrypted(shared_secret: &[u8], ciphertext: BytesMut) -> Result<Self, ParseError> {
+    pub fn from_encrypted(
+        shared_secret: &[u8],
+        ciphertext: BytesMut,
+    ) -> Result<Self, InvalidPacket> {
         // TODO handle decryption failure
-        let decrypted = decrypt(shared_secret, ciphertext)
-            .map_err(|_| ParseError::InvalidPacket(String::from("Unable to decrypt packet")))?;
+        let decrypted =
+            decrypt(shared_secret, ciphertext).map_err(|_| InvalidPacket::FailedToDecrypt)?;
         StreamPacket::from_bytes_unencrypted(decrypted)
     }
 
     #[cfg(any(fuzzing, test))]
-    pub fn from_decrypted(data: BytesMut) -> Result<Self, ParseError> {
+    pub fn from_decrypted(data: BytesMut) -> Result<Self, InvalidPacket> {
         Self::from_bytes_unencrypted(data)
     }
 
@@ -159,17 +165,15 @@ impl StreamPacket {
     /// # Errors
     /// 1. If the version of Stream Protocol doesn't match the hardcoded [stream version](constant.STREAM_VERSION.html)
     /// 1. If the decrypted bytes cannot be parsed to an unencrypted [Stream Packet](./struct.StreamPacket.html)
-    fn from_bytes_unencrypted(mut buffer_unencrypted: BytesMut) -> Result<Self, ParseError> {
+    fn from_bytes_unencrypted(mut buffer_unencrypted: BytesMut) -> Result<Self, InvalidPacket> {
         // TODO don't copy the whole packet again
         let mut reader = &buffer_unencrypted[..];
         let version = reader.read_u8()?;
         if version != STREAM_VERSION {
-            return Err(ParseError::InvalidPacket(format!(
-                "Unsupported STREAM version: {}",
-                version
-            )));
+            return Err(InvalidPacket::InvalidStreamVersion(version));
         }
-        let ilp_packet_type = IlpPacketType::try_from(reader.read_u8()?)?;
+        let ilp_packet_type = IlpPacketType::try_from(reader.read_u8()?)
+            .map_err(|_| InvalidPacket::WrongPacketType)?;
         let sequence = reader.read_var_uint()?;
         let prepare_amount = reader.read_var_uint()?;
 
@@ -207,9 +211,7 @@ impl StreamPacket {
                 frames_offset,
             })
         } else {
-            Err(ParseError::InvalidPacket(
-                "Incorrect number of frames or unable to parse all frames".to_string(),
-            ))
+            Err(InvalidPacket::IncorrectFrameCount)
         }
     }
 

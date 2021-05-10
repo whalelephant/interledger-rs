@@ -51,8 +51,8 @@ impl TryFrom<u8> for PacketType {
             12 => Ok(PacketType::Prepare),
             13 => Ok(PacketType::Fulfill),
             14 => Ok(PacketType::Reject),
-            byte => Err(ParseError::InvalidPacket(format!(
-                "Unknown packet type: {:?}",
+            byte => Err(ParseError::WrongType(format!(
+                "Unexpected Packet Type: {:?}",
                 Some(byte),
             ))),
         }
@@ -557,7 +557,7 @@ fn deserialize_envelope(
     let got_type = reader.read_u8()?;
 
     if got_type != packet_type as u8 {
-        return Err(ParseError::InvalidPacket(format!(
+        return Err(ParseError::WrongType(format!(
             "Unexpected packet type: {:?}",
             got_type,
         )));

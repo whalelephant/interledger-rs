@@ -19,6 +19,4 @@ pub enum ParseError {
     InvalidAddress(#[from] AddressError),
     #[error("Invalid Packet: {0}")]
     InvalidPacket(String),
-    #[error(transparent)]
-    OtherErr(Box<dyn std::error::Error + Send>),
 }
