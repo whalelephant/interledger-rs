@@ -949,7 +949,7 @@ fn saturating_read_var_uint<'a>(reader: &mut impl BufOerExt<'a>) -> Result<u64, 
             // This is needed because the returned value u64::MAX
             // will make roundtrip fail, i.e. BytesMut::from(packet)
             // will not equal to the original data.
-            Err(ParseError::WrongType(
+            Err(ParseError::FuzzErr(
                 "Fuzzing roundtrip for var_uint larger than u64::MAX unavailable".to_string(),
             ))
         } else {

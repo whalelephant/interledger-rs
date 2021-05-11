@@ -13,10 +13,23 @@ pub enum ParseError {
     FromUtf8Err(#[from] FromUtf8Error),
     #[error("Chrono Error: {0}")]
     ChronoErr(#[from] chrono::ParseError),
-    #[error("Wrong Type: {0}")]
-    WrongType(String),
+    #[error("Packet Type Error: {reason:?}, {found:?} was found")]
+    PacketTypeErr {
+        reason: PacketTypeErrors,
+        found: Option<u8>,
+    },
     #[error("Invalid Address: {0}")]
     InvalidAddress(#[from] AddressError),
+    #[error("Invalid Data Format for {target}: should be {expected}")]
+    InvalidDataFormat { target: String, expected: String },
     #[error("Invalid Packet: {0}")]
     InvalidPacket(String),
+    #[error("FuzzErr: {0}")]
+    FuzzErr(String),
+}
+
+#[derive(Debug)]
+pub enum PacketTypeErrors {
+    MismatchExpected(u8),
+    Unknown,
 }

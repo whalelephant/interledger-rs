@@ -7,9 +7,10 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::{Buf, BufMut, BytesMut};
 use chrono::{DateTime, TimeZone, Utc};
 
+use crate::errors::{PacketTypeErrors, ParseError};
 use crate::hex::HexString;
 use crate::oer::{self, BufOerExt, MutBufOerExt};
-use crate::{Address, ErrorCode, ParseError};
+use crate::{Address, ErrorCode};
 use std::convert::TryFrom;
 
 const AMOUNT_LEN: usize = 8;
@@ -35,9 +36,10 @@ impl TryFrom<&[u8]> for PacketType {
     type Error = ParseError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let first = bytes
-            .first()
-            .ok_or_else(|| ParseError::InvalidPacket("Unknown packet type: None".into()))?;
+        let first = bytes.first().ok_or_else(|| ParseError::PacketTypeErr {
+            reason: PacketTypeErrors::Unknown,
+            found: None,
+        })?;
 
         PacketType::try_from(*first)
     }
@@ -51,10 +53,10 @@ impl TryFrom<u8> for PacketType {
             12 => Ok(PacketType::Prepare),
             13 => Ok(PacketType::Fulfill),
             14 => Ok(PacketType::Reject),
-            byte => Err(ParseError::WrongType(format!(
-                "Unexpected Packet Type: {:?}",
-                Some(byte),
-            ))),
+            byte => Err(ParseError::PacketTypeErr {
+                reason: PacketTypeErrors::Unknown,
+                found: Some(byte),
+            }),
         }
     }
 }
@@ -143,7 +145,10 @@ impl TryFrom<BytesMut> for Prepare {
             .map(|e| (b'0'..=b'9').contains(e))
             .fold(true, |a, b| a & b)
         {
-            return Err(ParseError::InvalidPacket("DateTime must be numeric".into()));
+            return Err(ParseError::InvalidDataFormat {
+                target: "DateTime".into(),
+                expected: "numeric".into(),
+            });
         }
 
         let expires_at = str::from_utf8(&expires_at[..])?;
@@ -420,8 +425,9 @@ impl TryFrom<BytesMut> for Reject {
         let mut code = [0; 3];
         content.read_exact(&mut code)?;
 
-        let code = ErrorCode::new(code).ok_or_else(|| {
-            ParseError::InvalidPacket("Reject.ErrorCode was not IA5String".into())
+        let code = ErrorCode::new(code).ok_or_else(|| ParseError::InvalidDataFormat {
+            target: "Reject.ErrorCode".into(),
+            expected: "IA5String".into(),
         })?;
 
         let triggered_by_offset = content_offset + content_len - content.len();
@@ -557,10 +563,10 @@ fn deserialize_envelope(
     let got_type = reader.read_u8()?;
 
     if got_type != packet_type as u8 {
-        return Err(ParseError::WrongType(format!(
-            "Unexpected packet type: {:?}",
-            got_type,
-        )));
+        return Err(ParseError::PacketTypeErr {
+            reason: PacketTypeErrors::MismatchExpected(packet_type as u8),
+            found: Some(got_type),
+        });
     }
 
     let content_offset = 1 + {
@@ -668,7 +674,7 @@ mod fuzzed {
         let e = Packet::try_from(BytesMut::from(&orig[..])).unwrap_err();
         assert_eq!(
             &e.to_string(),
-            "Invalid Packet: Reject.ErrorCode was not IA5String"
+            "Invalid Data Format for Reject.ErrorCode: should be IA5String"
         );
     }
 }
@@ -688,7 +694,7 @@ mod test_packet_type {
     #[test]
     fn try_from_empty() {
         assert_eq!(
-            "Invalid Packet: Unknown packet type: None",
+            "Packet Type Error: Unknown, None was found",
             format!("{}", PacketType::try_from(&[][..]).unwrap_err())
         );
     }
@@ -756,7 +762,10 @@ mod test_prepare {
             let mut prep = BytesMut::from(PREPARE_BYTES);
             prep[i] = 9; // convert a byte from the address to a junk character
             let err = Prepare::try_from(prep).unwrap_err();
-            assert_eq!("Invalid Packet: DateTime must be numeric", &err.to_string());
+            assert_eq!(
+                "Invalid Data Format for DateTime: should be numeric",
+                &err.to_string()
+            );
         }
     }
 
