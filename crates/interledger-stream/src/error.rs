@@ -1,4 +1,6 @@
 /// Stream Errors
+use interledger_packet::ParseError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Error connecting: {0}")]
@@ -19,8 +21,8 @@ pub enum InvalidPacket {
     FailedToDecrypt,
     #[error("Error STREAM Version: {0}")]
     InvalidStreamVersion(u8),
-    #[error("Unknown or Unexpected Packet Type")]
-    WrongPacketType,
     #[error("Incorrect number of parsed frames")]
     IncorrectFrameCount,
+    #[error("Packet Parse Error: {0}")]
+    PacketParseErr(#[from] ParseError),
 }

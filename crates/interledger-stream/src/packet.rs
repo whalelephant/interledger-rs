@@ -172,8 +172,9 @@ impl StreamPacket {
         if version != STREAM_VERSION {
             return Err(InvalidPacket::InvalidStreamVersion(version));
         }
-        let ilp_packet_type = IlpPacketType::try_from(reader.read_u8()?)
-            .map_err(|_| InvalidPacket::WrongPacketType)?;
+
+        let ilp_packet_type = IlpPacketType::try_from(reader.read_u8()?)?;
+
         let sequence = reader.read_var_uint()?;
         let prepare_amount = reader.read_var_uint()?;
 
@@ -494,10 +495,9 @@ fn ensure_no_inner_trailing_bytes(_reader: &[u8]) -> Result<(), ParseError> {
     // Content slice passed to the `read_contents` function should not
     // contain extra bytes.
     #[cfg(feature = "strict")]
+    use interledger_packet::Field;
     if !_reader.is_empty() {
-        return Err(ParseError::InvalidPacket(
-            "Frame content length mismatch content".to_string(),
-        ));
+        return Err(ParseError::PacketLengthErr(Field::Frame));
     }
     Ok(())
 }
@@ -1027,7 +1027,7 @@ mod fuzzing {
         let pkt = StreamPacket::from_decrypted(b);
 
         assert_eq!(
-            "Invalid Packet: Incorrect number of frames or unable to parse all frames",
+            "Incorrect number of parsed frames",
             format!("{}", pkt.unwrap_err())
         );
     }
@@ -1107,7 +1107,7 @@ mod fuzzing {
         let pkt = StreamPacket::from_decrypted(b);
 
         assert_eq!(
-            "Invalid Packet: Incorrect number of frames or unable to parse all frames",
+            "Incorrect number of parsed frames",
             &pkt.unwrap_err().to_string()
         );
     }
