@@ -7,7 +7,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::{Buf, BufMut, BytesMut};
 use chrono::{DateTime, TimeZone, Utc};
 
-use crate::errors::{PacketTypeErrors, ParseError};
+use crate::errors::{Field, PacketTypeErrors, ParseError};
 use crate::hex::HexString;
 use crate::oer::{self, BufOerExt, MutBufOerExt};
 use crate::{Address, ErrorCode};
@@ -36,10 +36,9 @@ impl TryFrom<&[u8]> for PacketType {
     type Error = ParseError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let first = bytes.first().ok_or_else(|| ParseError::PacketTypeErr {
-            reason: PacketTypeErrors::Unknown,
-            found: None,
-        })?;
+        let first = bytes
+            .first()
+            .ok_or_else(|| PacketTypeErrors::Unknown.with_eof())?;
 
         PacketType::try_from(*first)
     }
@@ -53,10 +52,7 @@ impl TryFrom<u8> for PacketType {
             12 => Ok(PacketType::Prepare),
             13 => Ok(PacketType::Fulfill),
             14 => Ok(PacketType::Reject),
-            byte => Err(ParseError::PacketTypeErr {
-                reason: PacketTypeErrors::Unknown,
-                found: Some(byte),
-            }),
+            byte => Err(PacketTypeErrors::Unknown.with_found(byte)),
         }
     }
 }
@@ -319,9 +315,7 @@ impl TryFrom<BytesMut> for Fulfill {
         content.skip_var_octet_string()?;
 
         if !content.is_empty() {
-            return Err(ParseError::InvalidPacket(
-                "Packet contains trailing bytes".into(),
-            ));
+            return Err(ParseError::PacketLengthErr(Field::Content));
         }
 
         Ok(Fulfill {
@@ -585,9 +579,7 @@ fn deserialize_envelope(
         // is allowed for creating packet structs as it is not prohibited
         // in specs but required to return error for roundtripping in fuzzing
         if !reader.is_empty() {
-            return Err(ParseError::InvalidPacket(
-                "Packet contains unaccounted for trailing bytes".into(),
-            ));
+            return Err(ParseError::PacketLengthErr(Field::Content));
         }
     }
 
@@ -796,7 +788,7 @@ mod test_prepare {
         #[cfg(feature = "strict")]
         {
             assert_eq!(
-                "Invalid Packet: Packet contains unaccounted for trailing bytes",
+                "Packet Length Err: trailing bytes in Content",
                 format!("{}", with_junk_data.unwrap_err())
             );
         }
@@ -900,7 +892,7 @@ mod test_fulfill {
         #[cfg(feature = "strict")]
         {
             assert_eq!(
-                "Invalid Packet: Packet contains unaccounted for trailing bytes",
+                "Packet Length Err: trailing bytes in Content",
                 format!("{}", with_junk_data.unwrap_err())
             );
         }
@@ -948,7 +940,7 @@ mod test_fulfill {
         ];
 
         assert_eq!(
-            "Invalid Packet: Packet contains trailing bytes",
+            "Packet Length Err: trailing bytes in Content",
             format!(
                 "{}",
                 Fulfill::try_from(BytesMut::from(with_trailing_bytes)).unwrap_err()
@@ -1001,7 +993,7 @@ mod test_reject {
         #[cfg(feature = "strict")]
         {
             assert_eq!(
-                "Invalid Packet: Packet contains unaccounted for trailing bytes",
+                "Packet Length Err: trailing bytes in Content",
                 format!("{}", with_junk_data.unwrap_err())
             );
         }

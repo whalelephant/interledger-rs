@@ -20,16 +20,41 @@ pub enum ParseError {
     },
     #[error("Invalid Address: {0}")]
     InvalidAddress(#[from] AddressError),
+    // TODO: remove String
     #[error("Invalid Data Format for {target}: should be {expected}")]
     InvalidDataFormat { target: String, expected: String },
     #[error("Invalid Packet: {0}")]
     InvalidPacket(String),
+    #[error("Packet Length Err: trailing bytes in {0:?}")]
+    PacketLengthErr(Field),
     #[error("FuzzErr: {0}")]
     FuzzErr(String),
+}
+
+#[derive(Debug)]
+pub enum Field {
+    Content,
+    Frame,
 }
 
 #[derive(Debug)]
 pub enum PacketTypeErrors {
     MismatchExpected(u8),
     Unknown,
+}
+
+// TODO: doc
+impl PacketTypeErrors {
+    pub fn with_found(self, found: u8) -> ParseError {
+        ParseError::PacketTypeErr {
+            reason: self,
+            found: Some(found),
+        }
+    }
+    pub fn with_eof(self) -> ParseError {
+        ParseError::PacketTypeErr {
+            reason: self,
+            found: None,
+        }
+    }
 }
